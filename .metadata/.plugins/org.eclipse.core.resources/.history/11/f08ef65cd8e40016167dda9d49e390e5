@@ -1,0 +1,183 @@
+package lab3;
+
+import lejos.hardware.motor.EV3LargeRegulatedMotor;
+
+public class Navigator {
+
+	private static final int FORWARD_SPEED = 250;
+	private static final int ROTATE_SPEED = 150;
+
+	public static void drive(EV3LargeRegulatedMotor leftMotor, EV3LargeRegulatedMotor rightMotor,
+			double leftRadius, double rightRadius, double width, boolean navigate) {
+		// reset the motors
+		for (EV3LargeRegulatedMotor motor : new EV3LargeRegulatedMotor[] { leftMotor, rightMotor }) {
+			motor.stop();
+			motor.setAcceleration(1000);
+		}
+
+		// wait 5 seconds
+		try {
+			Thread.sleep(2000);
+		} catch (InterruptedException e) {
+			// there is nothing to be done here because it is not expected that
+			// the odometer will be interrupted by another thread
+		}
+
+		if(navigate == true)
+		{
+			
+		}
+		else
+		{
+			
+		}
+	}
+	
+	public static void travelTo(double x, double y)
+	{
+		
+		
+	}
+	
+	public static void turnTo(double theta)
+	{
+		
+	}
+	
+	public static boolean isNavigating()
+	{
+		return true;
+	}
+	
+	public static calcTravel(double xi, double yi, double xf, double yf)
+	{
+		
+	}
+	
+	public static double calcTurn(double xi, double yi, double xf, double yf, EV3LargeRegulatedMotor leftMotor, EV3LargeRegulatedMotor rightMotor,
+			double leftRadius, double rightRadius, double width)
+	{
+		double diffX = xf-xi;
+		double diffY = yf-yi;
+		double theta = 0;
+		Odometer o = new Odometer(leftMotor,rightMotor);
+		double curTheta = o.getTheta();
+		
+		
+		if(diffX > 0 && diffY > 0)			// Traveling to positive x and y
+		{
+			theta = Math.atan2(diffY,diffX);
+			
+			double theta1 = 360-curTheta+(90-theta);
+			double theta2 = curTheta-(90-theta);
+				
+			if(Math.abs(theta1)<Math.abs(theta2))
+			{
+				theta = theta1;
+			}
+			else
+			{
+				theta = -theta2;
+			}
+			turnTo(theta);		
+		}
+		else if(diffX > 0 && diffY < 0)			// Traveling to negative y and positive x
+		{
+			theta = Math.atan2(diffY,diffX);
+			
+			double theta1 = 360-curTheta+(90-theta);
+			double theta2 = curTheta-(90-theta);
+			
+			if(Math.abs(theta1)<Math.abs(theta2))
+			{
+				theta = theta1;
+			}
+			else
+			{
+				theta = -theta2;
+			}
+			turnTo(theta);	
+		}
+		
+		else if(diffX < 0 && diffY < 0)
+		{
+			theta = Math.atan2(diffY,diffX);
+			
+			double theta1 = 360-curTheta+(270-theta);
+			double theta2 = curTheta-(180+theta);
+				
+			if(Math.abs(theta1)<Math.abs(theta2))
+			{
+				theta = theta1;
+			}
+			else
+			{
+				theta = -theta2;
+			}
+			
+			turnTo(theta);
+		}
+
+		else if(diffX == 0)
+		{
+			if(diffY > 0)
+			{
+				if(curTheta <= 90 && curTheta >= 0)
+				{
+					theta = 360-curTheta;
+					turnTo(-theta);
+				}
+				else if(curTheta <= 360 && curTheta >= 270)
+				{
+					theta = 90-curTheta;
+					turnTo(theta);
+				}
+				else if(curTheta > 90 && curTheta <= 180)
+				{
+					theta = curTheta;
+					turnTo(-theta);
+				}
+				else if(curTheta < 270 && curTheta >= 180)
+				{
+					theta = 360-curTheta;
+					turnTo(theta);
+				}
+			}
+			else if (diffY < 0)
+			{
+				if(curTheta <= 90 && curTheta >= 0)
+				{
+					theta = 360-curTheta;
+					turnTo(theta);
+				}
+				else if(curTheta <= 360 && curTheta >= 270)
+				{
+					theta = 90-curTheta;
+					turnTo(-theta);
+				}
+				else if(curTheta > 90 && curTheta <= 180)
+				{
+					theta = curTheta;
+					turnTo(theta);
+				}
+				else if(curTheta < 270 && curTheta >= 180)
+				{
+					theta = 360-curTheta;
+					turnTo(-theta);
+				}
+			}
+		} 
+		
+		
+		return theta;
+	}
+
+	private static int convertDistance(double radius, double distance) {
+		return (int) ((180.0 * distance) / (Math.PI * radius));
+	}
+
+	private static int convertAngle(double radius, double width, double angle) {
+		return convertDistance(radius, Math.PI * width * angle / 360.0);
+	}
+	
+}

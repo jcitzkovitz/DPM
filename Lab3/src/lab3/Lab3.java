@@ -1,6 +1,6 @@
 package lab3;
 
-import lejos.hardware.Button;
+import lejos.hardware.Button;  
 import lejos.hardware.ev3.LocalEV3;
 import lejos.hardware.lcd.TextLCD;
 import lejos.hardware.motor.EV3LargeRegulatedMotor;
@@ -29,8 +29,7 @@ public class Lab3 {
 			final TextLCD t = LocalEV3.get().getTextLCD();
 			Odometer odometer = new Odometer(leftMotor, rightMotor);
 			OdometryDisplay odometryDisplay = new OdometryDisplay(odometer,t);
-			OdometryCorrection odometryCorrection = new OdometryCorrection(odometer);
-
+			
 			do {
 				// clear the display
 				t.clear();
@@ -45,16 +44,17 @@ public class Lab3 {
 				buttonChoice = Button.waitForAnyPress();
 			} while (buttonChoice != Button.ID_LEFT
 					&& buttonChoice != Button.ID_RIGHT);
-
+			
 			if (buttonChoice == Button.ID_LEFT) {
 				
 				odometer.start();
 				odometryDisplay.start();
 				
-				// spawn a new Thread to avoid SquareDriver.drive() from blocking
+				// spawn a new Thread to avoid Navigator.drive() from blocking
 				(new Thread() {
 					public void run() {
-						Navigator.drive(leftMotor, rightMotor, WHEEL_RADIUS, WHEEL_RADIUS, TRACK, true);
+						Navigator nav1 = new Navigator(leftMotor, rightMotor, WHEEL_RADIUS, WHEEL_RADIUS, TRACK, true);
+						nav1.drive();
 					}
 				}).start();
 				
@@ -65,10 +65,11 @@ public class Lab3 {
 				odometer.start();
 				odometryDisplay.start();
 
-				// spawn a new Thread to avoid SquareDriver.drive() from blocking
+				// spawn a new Thread to avoid Navigator.drive() from blocking
 				(new Thread() {
 					public void run() {
-						Navigator.drive(leftMotor, rightMotor, WHEEL_RADIUS, WHEEL_RADIUS, TRACK, false);
+						Navigator nav2 = new Navigator(leftMotor, rightMotor, WHEEL_RADIUS, WHEEL_RADIUS, TRACK, false);
+						nav2.drive();
 					}
 				}).start();
 			}
