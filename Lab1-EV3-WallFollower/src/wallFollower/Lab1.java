@@ -1,5 +1,7 @@
 package wallFollower;
 
+import lab3.PController;
+import lab3.UltrasonicPoller;
 import lejos.hardware.sensor.*;
 import lejos.hardware.ev3.LocalEV3;
 import lejos.hardware.motor.EV3LargeRegulatedMotor;

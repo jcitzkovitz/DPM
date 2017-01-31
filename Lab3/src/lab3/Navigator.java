@@ -1,6 +1,11 @@
 package lab3;
 
+import lejos.hardware.ev3.LocalEV3;
 import lejos.hardware.motor.EV3LargeRegulatedMotor;
+import lejos.hardware.port.Port;
+import lejos.hardware.sensor.EV3UltrasonicSensor;
+import lejos.hardware.sensor.SensorModes;
+import lejos.robotics.SampleProvider;
 
 public class Navigator {
 
@@ -13,9 +18,17 @@ public class Navigator {
 	double width; 
 	boolean navigate;
 	Odometer o;
+	PController p;
+	UltrasonicPoller usPoller;
+	Thread curThread;
+	volatile double xDestOnCurrentPath;
+	volatile double yDestOnCurrentPath;
+	private static final EV3LargeRegulatedMotor sensorMotor = new EV3LargeRegulatedMotor(LocalEV3.get().getPort("C"));
+	volatile int[][] pointsToTravelTo = new int[2][2];
 	
 	public Navigator(EV3LargeRegulatedMotor leftMotor, EV3LargeRegulatedMotor rightMotor,
-			double leftRadius, double rightRadius, double width, boolean navigate)
+			double leftRadius, double rightRadius, double width, boolean navigate, Odometer o, 
+			UltrasonicPoller usPoller, Thread curThread, PController p)
 			{
 				this.leftMotor = leftMotor;
 				this.rightMotor = rightMotor;
@@ -23,7 +36,12 @@ public class Navigator {
 				this.rightRadius = rightRadius;
 				this.width = width;
 				this.navigate = navigate;
-				this.o = new Odometer(this.leftMotor,this.rightMotor);
+				this.o = o;
+				this.usPoller = usPoller;
+				this.curThread = curThread;
+				this.xDestOnCurrentPath = 0;
+				this.yDestOnCurrentPath = 0;
+				this.p = p;
 			}
 	
 	public void drive() {
@@ -33,86 +51,163 @@ public class Navigator {
 			motor.setAcceleration(1000);
 		}
 
-		// wait 5 seconds
+		// Wait 5 seconds
 		try {
 			Thread.sleep(2000);
 		} catch (InterruptedException e) {
-			// there is nothing to be done here because it is not expected that
-			// the odometer will be interrupted by another thread
+			// There is nothing to be done here because it is not expected that
+			// The odometer will be interrupted by another thread
 		}
 
 		if(navigate == true)
 		{
 			
+			// Set points to travel to in order to access where is left to travel in a thread that will be 
+			// spawned to run a wall avoidance method
+			pointsToTravelTo[0][0]=0;
+			pointsToTravelTo[0][1]=60;
+			pointsToTravelTo[1][0]=60;
+			pointsToTravelTo[1][1]=0;
+			
+			//ObstacleAvoidance obstacleAvoidanceThread = new ObstacleAvoidance();
+			//obstacleAvoidanceThread.start();
+			
+			// This thread will use the ulltrasonic sensor to detect an obstacle, and maneouver around it
+			// by using the p controller.
+			(new Thread() {
+				public void run() {
+					boolean Continue = true;
+					int dist = 0;
+					while(Continue)
+					{
+						dist = usPoller.getDistance();
+						if(dist <= 17)
+						{
+							// Interupt the current thread when the robot is too close to the obstacle
+							// as you dont want the two threads competing over the robot's motion.
+							curThread.interrupt();
+							
+							// Calculate the the robots line of travel using odometer and current 
+							// destination values
+							double[] function = calculateLineToPathFunction();
+							
+							// Set the p controller processData boolean to true in order to commence 
+							// the p controller's data processing method
+							p.setProcessData(true);
+							
+							sensorMotor.setSpeed(50);
+							sensorMotor.rotate(45);
+							
+							// Sleep for several seconds in order to avoid comparing the current points
+							// to the function calculated above.
+							try{Thread.sleep(2000);}catch(Exception e){};
+							
+							boolean onLineToPath = false;
+							while(!onLineToPath)
+								{
+									// Check if the robot is, within error, back on the same path prior
+									// to deviation
+									onLineToPath = functionIsBackOnLineToPath(function,o.getX(),o.getY());
+								}
+							
+							p.setProcessData(false);
+							sensorMotor.rotate(-45,false);
+							usPoller.interrupt();
+							
+							// If the first point has been traversed, only travel to the second point
+							if(pointsToTravelTo[0][0]==-1)
+							{
+								travelTo(pointsToTravelTo[1][0],pointsToTravelTo[1][1]);
+							}
+							
+							// Else, continue traveling to the first point and then the second point
+							else
+							{
+								travelTo(pointsToTravelTo[0][0],pointsToTravelTo[0][1]);
+								travelTo(pointsToTravelTo[1][0],pointsToTravelTo[1][1]);
+							}
+							
+							Continue = false;
+						}
+					}
+				}
+			}).start();
+			
+			
+			// Set x and y positions of where the robot is planning on travelling to next
+			xDestOnCurrentPath = 0;
+			yDestOnCurrentPath = 60;
+			
+			//Drive from (0,0) to (60,30)
+			travelTo(0,60);	
+			
+			// Set a marker for the thread running the wall avoider in order to notify
+			// which point it was traveling to prior to diverting
+			pointsToTravelTo[0][0]=-1;
+					
+			// Set x and y positions of where the robot is planning on travelling to next
+			xDestOnCurrentPath = 60;
+			yDestOnCurrentPath = 0;
+			
+			//Drive from (60,30) to (30,30)
+			travelTo(60,0);
+			
 		}
 		else
 		{
-			// Turn from (0,0) to (60,30)
-			double theta = calcTurn(0,0,60,30);
-			turnTo(theta);
+			
 			//Drive from (0,0) to (60,30)
 			travelTo(60,30);
-			
-			// Turn from (60,30) to (30,30)
-			theta = calcTurn(this.o.getX(),this.o.getY(),30,30);
-			turnTo(theta);		
+				
 			//Drive from (60,30) to (30,30)
 			travelTo(30,30);
-			
-			// Turn from (30,30) to (30,60)
-			theta = calcTurn(this.o.getX(),this.o.getY(),30,60);
-			turnTo(theta);		
+					
 			//Drive from (30,30) to (30,60)
 			travelTo(30,60);
-						
-			// Turn from (30,60) to (60,0)
-			theta = calcTurn(this.o.getX(),this.o.getY(),60,0);
-			turnTo(theta);					
+				
 			//Drive from (30,60) to (60,0)
 			travelTo(60,0);
 		}
 	}
 	
-	public void travelTo(double x, double y)
+	public void travelTo(int xf, int yf)
 	{
-		double xi = this.o.getX();
-		double yi = this.o.getY();
-		double dist = Math.sqrt(Math.pow(x-xi,2)+Math.pow(y-yi,2));
-		this.leftMotor.setSpeed(FORWARD_SPEED);
-		this.rightMotor.setSpeed(FORWARD_SPEED);
-		this.leftMotor.rotate(convertDistance(leftRadius, dist), true);
-		this.rightMotor.rotate(convertDistance(rightRadius, dist), false);
+		int xi = (int) o.getX();
+		int yi = (int) o.getY();
+		double theta = calculateThetaForTurn(xi,yi,xf,yf);
+		turnTo(theta);
+		double dist = Math.sqrt(Math.pow(xf-xi,2)+Math.pow(yf-yi,2));
+		leftMotor.setSpeed(FORWARD_SPEED);
+		rightMotor.setSpeed(FORWARD_SPEED);
+		leftMotor.rotate(convertDistance(leftRadius, dist), true);
+		rightMotor.rotate(convertDistance(rightRadius, dist), false);
 	}
 	
 	public void turnTo(double theta)
 	{
-		this.leftMotor.setSpeed(ROTATE_SPEED);
-		this.rightMotor.setSpeed(ROTATE_SPEED);
+		leftMotor.setSpeed(ROTATE_SPEED);
+		rightMotor.setSpeed(ROTATE_SPEED);
+		theta=theta*180/Math.PI;
 		leftMotor.rotate(convertAngle(leftRadius, width, theta), true);
 		rightMotor.rotate(-convertAngle(rightRadius, width, theta), false);
+		
 	}
 	
-	public boolean isNavigating()
-	{
-		return true;
-	}
-	
-	
-	public double calcTurn(double xi, double yi, double xf, double yf)
+	public double calculateThetaForTurn(double xi, double yi, double xf, double yf)
 	{
 		double diffX = xf-xi;
 		double diffY = yf-yi;
 		double theta = 0;
-		double curTheta = this.o.getTheta();
+		double curTheta = o.getTheta();
 		double axisTheta = 0;
 		
-		
-		if(diffX > 0 && diffY > 0)			// Traveling to positive x and y
+		// Traveling to positive x and y (Quadrant 1)
+		if(diffX > 0 && diffY > 0)
 		{
 			theta = Math.atan2(diffY,diffX);
-			axisTheta = 90-theta;
+			axisTheta = Math.PI/2-theta;
 			
-			double theta1 = 360-curTheta+axisTheta;
+			double theta1 = 2*Math.PI-curTheta+axisTheta;
 			double theta2 = curTheta-axisTheta;
 				
 			if(Math.abs(theta1)<Math.abs(theta2))
@@ -124,12 +219,14 @@ public class Navigator {
 				theta = -theta2;
 			}		
 		}
-		else if(diffX > 0 && diffY < 0)			// Traveling to negative y and positive x
+		
+		// Traveling to positive x and negative y (Quadrant 4)
+		else if(diffX > 0 && diffY < 0)
 		{
 			theta = Math.atan2(diffY,diffX);
-			axisTheta = 90-theta;
+			axisTheta = Math.PI/2-theta;
 			
-			double theta1 = 360-curTheta+axisTheta;
+			double theta1 = 2*Math.PI-curTheta+axisTheta;
 			double theta2 = curTheta-axisTheta;
 			
 			if(Math.abs(theta1)<Math.abs(theta2))
@@ -142,12 +239,13 @@ public class Navigator {
 			}
 		}
 		
-		else if(diffX < 0 && diffY < 0)
+		// Traveling to negative x and negative y (Quadrant 3)
+		else if(diffX < 0 && diffY < 0)			
 		{
 			theta = Math.atan2(diffY,diffX);
-			axisTheta = 270-theta;
+			axisTheta = 3*Math.PI/2-theta;
 			
-			double theta1 = 360-curTheta+axisTheta;
+			double theta1 = 2*Math.PI-curTheta+axisTheta;
 			double theta2 = curTheta-axisTheta;
 				
 			if(Math.abs(theta1)<Math.abs(theta2))
@@ -160,13 +258,14 @@ public class Navigator {
 			}
 			
 		}
-
+		
+		// Traveling to negative x and positive y (Quadrant 2)
 		else if(diffX < 0 && diffY > 0)
 		{
 			theta = Math.atan2(diffY,diffX);
-			axisTheta = 270-theta;
+			axisTheta = 3*Math.PI/2-theta;
 			
-			double theta1 = 360-curTheta+axisTheta;
+			double theta1 = 2*Math.PI-curTheta+axisTheta;
 			double theta2 = curTheta-axisTheta;
 				
 			if(Math.abs(theta1)<Math.abs(theta2))
@@ -180,63 +279,73 @@ public class Navigator {
 
 		}
 		
+		// If there is no change in x, only travel in the y direction
 		else if(diffX == 0)
 		{
+			// Travel in the positive y direction
 			if(diffY > 0)
 			{
-				if(curTheta >= 0 && curTheta <= 180)
+				if(curTheta >= 0 && curTheta <= Math.PI)
 				{
 					theta = -curTheta;
 				}
-				else if(curTheta > 180 && curTheta <= 360)
+				else if(curTheta > Math.PI && curTheta <= 2*Math.PI)
 				{
-					theta = 360-curTheta;
+					theta = 2*Math.PI-curTheta;
 				}
 
 			}
+			
+			// Travel in the negative y direction
 			else if (diffY < 0)
 			{
-				if(curTheta >= 0 && curTheta <= 180)
+				if(curTheta >= 0 && curTheta <= Math.PI)
 				{
-					theta = 180-curTheta;
+					theta = Math.PI-curTheta;
 				}
-				else if(curTheta > 180 && curTheta <= 360)
+				else if(curTheta > Math.PI && curTheta <= 2*Math.PI)
 				{
-					theta = -(curTheta-180);
+					theta = -(curTheta-Math.PI);
 				}
 			}
 		} 
+		
+		// If there is no change in y, only travel in the x direction
 		else if(diffY == 0)
 		{
+			// Travel in the positive x direction
 			if(diffX > 0)
 			{
-				if(curTheta >= 0 && curTheta <= 90)
+				if(curTheta >= 0 && curTheta <= Math.PI/2)
 				{
-					theta = 90-curTheta;
+					theta = Math.PI/2-curTheta;
 				}
-				else if(curTheta >= 270 && curTheta <= 360)
+				else if(curTheta >= 3*Math.PI/2 && curTheta <= 2*Math.PI)
 				{
-					theta = 360-curTheta+90;
+					theta = 2*Math.PI-curTheta+Math.PI/2;
 				}
-				else if(curTheta > 90 && curTheta < 270)
+				else if(curTheta > Math.PI/2 && curTheta < 3*Math.PI/2)
 				{
-					theta = 90-curTheta;
+					theta = Math.PI/2-curTheta;
 				}
 
 			}
+			
+			// Travel in the negative x direction
 			else if (diffX < 0)
 			{
-				if(curTheta >= 0 && curTheta <= 90)
+				if(curTheta >= 0 && curTheta <= Math.PI/2)
 				{
-					theta = -(curTheta+90);
+					theta = -(curTheta+Math.PI/2);
+					
 				}
-				else if(curTheta >= 270 && curTheta <= 360)
+				else if(curTheta >= 3*Math.PI/2 && curTheta <= 2*Math.PI)
 				{
-					theta = -(360-curTheta+90);
+					theta = -(Math.PI/2-(2*Math.PI-curTheta));
 				}
-				else if(curTheta > 90 && curTheta < 270)
+				else if(curTheta > Math.PI/2 && curTheta < 3*Math.PI/2)
 				{
-					theta = 180-curTheta;
+					theta = 3*Math.PI/2-curTheta;
 				}
 			}
 		} 
@@ -251,5 +360,83 @@ public class Navigator {
 	private static int convertAngle(double radius, double width, double angle) {
 		return convertDistance(radius, Math.PI * width * angle / 360.0);
 	}
+	
+	public double[] calculateLineToPathFunction()
+	{
+		double[] function = new double[2];
+		if(Math.abs(xDestOnCurrentPath - o.getX())<1)
+		{
+			//Notifies that there is no change in x and the robot must go back to x pos
+			function[0]=10000;
+			
+		}
+		else if(Math.abs(yDestOnCurrentPath - o.getY())<1)
+		{
+			//Notifies that there is no change in x and the robot must go back to x pos
+			function[1]=10000;
+		}
+		else
+		{
+			double a = (yDestOnCurrentPath-o.getY())/(xDestOnCurrentPath-o.getX());
+			double b = o.getY()-a*o.getX();
+			function[0] = a;
+			function[1] = b;
+		}
+		
+		return function;
+	}
+	
+	public boolean functionIsBackOnLineToPath(double[] function, double x, double y)
+	{
+		if(function[0] == 10000 && (o.getX() >= xDestOnCurrentPath-.1 && o.getX() <= xDestOnCurrentPath+.1))
+		{
+			return true;
+		}
+		else if(function[1] == 10000 && (o.getY() >= yDestOnCurrentPath-.1 && o.getY() <= yDestOnCurrentPath+.1))
+		{
+			return true;
+		}
+		else if(Math.abs(y - (function[0]*x+function[1])) <= 10)
+		{
+			return true;
+		}
+		
+		return false;
+	}
+	
+	/*class ObstacleAvoidance extends Thread{  
+		public void run(){  
+			boolean Continue = true;
+			int dist = 0;
+			
+			while(Continue)
+			{
+				dist = usPoller.getDistance();
+				if(dist <= 17)
+				{
+					curThread.interrupt();
+					double[] function = calculateLineToPathFunction();
+					p.setProcessData(true);
+					sensorMotor.setSpeed(50);
+					sensorMotor.rotate(45);
+					//double thetaDifference = Math.abs(initialTheta-o.getTheta());
+					try{Thread.sleep(2000);}catch(Exception e){};
+					boolean onLineToPath = false;
+					while(!onLineToPath)
+						{
+							onLineToPath = functionIsBackOnLineToPath(function,o.getX(),o.getY());
+						}
+					p.setProcessData(false);
+					sensorMotor.rotate(-45,false);
+					usPoller.interrupt();
+					travelTo(60,0);
+					
+					Continue = false;
+				}
+			}
+}
+
+		
+}*/
 	
 }

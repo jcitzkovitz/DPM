@@ -1,9 +1,13 @@
 package lab3;
 
-import lejos.hardware.Button;  
+import lejos.hardware.Button;   
 import lejos.hardware.ev3.LocalEV3;
 import lejos.hardware.lcd.TextLCD;
 import lejos.hardware.motor.EV3LargeRegulatedMotor;
+import lejos.hardware.port.Port;
+import lejos.hardware.sensor.EV3UltrasonicSensor;
+import lejos.hardware.sensor.SensorModes;
+import lejos.robotics.SampleProvider;
 import lab3.Odometer;
 import lab3.OdometryCorrection;
 import lab3.OdometryDisplay;
@@ -17,24 +21,28 @@ public class Lab3 {
 		private static final EV3LargeRegulatedMotor leftMotor = new EV3LargeRegulatedMotor(LocalEV3.get().getPort("A"));
 		private static final EV3LargeRegulatedMotor rightMotor = new EV3LargeRegulatedMotor(LocalEV3.get().getPort("D"));
 
+		// Setup port for ultrasonic sensor
+		private static final Port usPort = LocalEV3.get().getPort("S1");
+		
 		// Constants
 		public static final double WHEEL_RADIUS = 2.095;
 		public static final double TRACK = 16.35;
+		private static final int bandCenter = 30;			// Offset from the wall (cm)
+		private static final int bandWidth =3;				// Width of dead band (cm)
 
 		public static void main(String[] args) {
 			int buttonChoice;
 
-			// some objects that need to be instantiated
-			
+			// Some objects that need to be instantiated
 			final TextLCD t = LocalEV3.get().getTextLCD();
-			Odometer odometer = new Odometer(leftMotor, rightMotor);
+			final Odometer odometer = new Odometer(leftMotor, rightMotor);
 			OdometryDisplay odometryDisplay = new OdometryDisplay(odometer,t);
 			
 			do {
-				// clear the display
+				// Clear the display
 				t.clear();
 
-				// ask the user whether the motors should drive in a square or float
+				// Ask the user whether the motors should drive in a square or float
 				t.drawString("< Left    | Right >", 0, 0);
 				t.drawString("          |        ", 0, 1);
 				t.drawString(" Navigate | Drive  ", 0, 2);
@@ -45,30 +53,43 @@ public class Lab3 {
 			} while (buttonChoice != Button.ID_LEFT
 					&& buttonChoice != Button.ID_RIGHT);
 			
-			if (buttonChoice == Button.ID_LEFT) {
+			// Setup ultrasonic sensor
+			@SuppressWarnings("resource")							    
+			final SensorModes usSensor = new EV3UltrasonicSensor(usPort);
+			final SampleProvider usDistance = usSensor.getMode("Distance");	
+			float[] usData = new float[usDistance.sampleSize()];		
+		
+			// Instantiate p controller object
+			final PController p = new PController(leftMotor, rightMotor, bandCenter, bandWidth);
+			
+			// Instantiate UltrasonicPoller thread
+			final UltrasonicPoller usPoller = new UltrasonicPoller(usDistance, usData, p);
+			
+			if (buttonChoice == Button.ID_LEFT) {				
 				
+				// Start the odometer, odometerDisplay and the usPoller threads
 				odometer.start();
 				odometryDisplay.start();
+				usPoller.start();
 				
-				// spawn a new Thread to avoid Navigator.drive() from blocking
+				// Spawn a new Thread to avoid Navigator.drive() from blocking
 				(new Thread() {
 					public void run() {
-						Navigator nav1 = new Navigator(leftMotor, rightMotor, WHEEL_RADIUS, WHEEL_RADIUS, TRACK, true);
+						Navigator nav1 = new Navigator(leftMotor, rightMotor, WHEEL_RADIUS, WHEEL_RADIUS, TRACK, true, odometer,usPoller,Thread.currentThread(),p);
 						nav1.drive();
 					}
 				}).start();
 				
 			} else {
-				// start the odometer, the odometry display and (possibly) the
-				// odometry correction
 				
+				// Start the odometer, the odometry display and (possibly) the
 				odometer.start();
 				odometryDisplay.start();
 
 				// spawn a new Thread to avoid Navigator.drive() from blocking
 				(new Thread() {
 					public void run() {
-						Navigator nav2 = new Navigator(leftMotor, rightMotor, WHEEL_RADIUS, WHEEL_RADIUS, TRACK, false);
+						Navigator nav2 = new Navigator(leftMotor, rightMotor, WHEEL_RADIUS, WHEEL_RADIUS, TRACK, false, odometer, usPoller, Thread.currentThread(),p);
 						nav2.drive();
 					}
 				}).start();

@@ -1,4 +1,5 @@
 package wallFollower;
+import lab3.UltrasonicController;
 import lejos.hardware.motor.*;
 import lejos.hardware.sensor.EV3UltrasonicSensor;
 import lejos.hardware.sensor.SensorModes;

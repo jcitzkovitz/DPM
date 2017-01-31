@@ -1,4 +1,5 @@
 package wallFollower;
+import lab3.UltrasonicController;
 import lejos.hardware.Button;
 import lejos.hardware.ev3.LocalEV3;
 import lejos.hardware.lcd.TextLCD;

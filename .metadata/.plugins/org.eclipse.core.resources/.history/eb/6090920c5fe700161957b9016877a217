@@ -1,0 +1,128 @@
+package lab3;
+import lejos.hardware.motor.EV3LargeRegulatedMotor;
+
+public class PController implements UltrasonicController {
+	
+	private final int bandCenter, bandwidth;
+	private final int motorHigh = 200, FILTER_OUT = 50;
+	private EV3LargeRegulatedMotor leftMotor, rightMotor;
+	private int distance;
+	private int filterControl;
+	public static final int MAXCORRECTION=100;	// Bound on correction to prevent stalling
+	public static final int MAXDIST=200;        // Max value of valid distance
+	public static final double PROPCONST=8;		// Proportionality constant - chosen through trial and error
+	public boolean processData;
+
+	
+	public PController(EV3LargeRegulatedMotor leftMotor, EV3LargeRegulatedMotor rightMotor,
+					   int bandCenter, int bandwidth) {
+		//Default Constructor
+		this.bandCenter = bandCenter;						// Ideal distance from wall (cm)
+		this.bandwidth = bandwidth;							// Allowed error from band center (cm)
+		this.leftMotor = leftMotor;
+		this.rightMotor = rightMotor;
+		leftMotor.setSpeed(motorHigh);					// Initalize motor rolling forward
+		rightMotor.setSpeed(motorHigh);
+		leftMotor.forward();
+		rightMotor.forward();
+		filterControl = 0;
+		this.processData = false;
+	}
+	
+	@Override
+	public void processUSData(int distance) {
+		
+		if(processData)
+		{
+		int distError = this.bandCenter - distance;			// Set the distance error
+		int difference = calcDiff(Math.abs(distError));		// Calculate the difference in speed that
+															// the robot will be adjusted to based on
+															// distance from the blocks
+		
+		if(Math.abs(distError) <= this.bandwidth)			// Within bandWidth, go straight ahead
+		{
+			leftMotor.setSpeed(motorHigh);				// Motion forward
+			rightMotor.setSpeed(motorHigh);
+			leftMotor.forward();
+			rightMotor.forward();
+			filterControl++;								// Update filterControl
+		}
+		
+		if(distError > 0)									// ****Too close to wall****
+		{
+			//Increment/decrement values were chosen through trial and error
+			
+			leftMotor.setSpeed(motorHigh+2*difference);
+			rightMotor.setSpeed(motorHigh-difference);
+			leftMotor.forward();
+			rightMotor.backward();
+			filterControl = 0;								// Set the flterControl back to 0 as this was
+															// a valid reading
+		}
+		
+		if(distError < 0)									// ****Too far from wall****
+		{
+			// Filter out bad values (anything greater than 255), and proceed straight ahead if values
+			// are "bad" (described by the condition in the if statement below).
+			if(distance >= 255 && filterControl <= FILTER_OUT)
+			{
+				leftMotor.setSpeed(motorHigh);			// Continue in forward motion
+				rightMotor.setSpeed(motorHigh);
+				leftMotor.forward();
+				rightMotor.forward();
+				filterControl++;							// Increment filterControl
+				return;
+			}
+			
+			// Turn left if either the filterControl exceeds it's limit OR if the distance is less than
+			// 255. This means that the robot is either reading values within the appropriate range 
+			// along the wall OR that it is reading extremely large values, however because it must turn
+			// 180 degrees around a corner
+			
+			else
+			{
+				leftMotor.setSpeed(motorHigh);
+				rightMotor.setSpeed(motorHigh+2*difference);
+				leftMotor.forward();
+				rightMotor.forward();
+			}
+		}
+		}
+		
+	}
+	
+int calcDiff (int distError) {								// ****Difference function calculator****
+		
+		// Cast the integer value of distError into a double inorder to perform calculations with
+		// PROPCONST, which is a double
+		double doubleError = (double) distError;
+		
+		// Set the correction and cast it back to an int
+		int correction = (int)(PROPCONST*doubleError);
+		
+		// If the correction value is greater than the high motor value, set it to MAXCORRECTION value
+		// in order to avoid speeds that are too high.
+		
+		if(correction >= motorHigh)
+		{
+			correction = MAXCORRECTION;
+		}
+		
+		return correction;	
+	}
+	
+
+	//Print distance values onto screen
+	@Override
+	public int readUSDistance() {
+		return this.distance;
+	}
+
+	public void setProcessData(boolean processData)
+	{
+		this.processData = processData;
+	}
+	
+}
+
+
