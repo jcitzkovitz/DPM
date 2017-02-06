@@ -64,7 +64,6 @@ public class USLocalizer {
 			
 			// Rotate counter clockwise until no wall is seen (for the same reason
 			// as mentioned above)
-			
 			while(getFilteredData() < BANDWIDTH)
 			{
 				rotateCCW();
@@ -90,10 +89,12 @@ public class USLocalizer {
 			Delay.msDelay(1000);
 			
 			// Calculate the orientation angle for final positioning
-			orientationAngle = calculateFinalOrientationAngle(angleA,angleB)+odo.getAng(); // get the actual angle of the robot
+			orientationAngle = calculateFinalOrientationAngle(angleA,angleB)+odo.getAng();
 			
 			// Update the odometer position
-			odo.setPosition(new double [] {0.0, 0.0, orientationAngle}, new boolean [] {true, true, true});
+			double[] finalOrientation = {0.0, 0.0, orientationAngle};
+			boolean[] setAllPositions = {true,true,true};
+			odo.setPosition(finalOrientation, setAllPositions);
 			
 			// Rotate to angle 0
 			navigation.turnTo(0, true);
@@ -159,8 +160,10 @@ public class USLocalizer {
 			// Calculate the orientation angle for final positioning
 			orientationAngle = calculateFinalOrientationAngle(angleB,angleA)+odo.getAng();
 			
-			// Update the odometer position (example to follow:)
-			odo.setPosition(new double [] {0.0, 0.0, orientationAngle}, new boolean [] {true, true, true});
+			// Update the odometer position
+			double[] finalOrientation = {0.0, 0.0, orientationAngle};
+			boolean[] setAllPositions = {true,true,true};
+			odo.setPosition(finalOrientation, setAllPositions);
 			
 			// Rotate to angle 0
 			navigation.turnTo(0, true);
@@ -200,11 +203,14 @@ public class USLocalizer {
 		
 		double orientationAngle = 0;
 		
-		if (angleA < angleB){
+		if (angleA < angleB)
+		{
 			orientationAngle = 45-(angleA+angleB)/2 ;
-		}else {
+		}else 
+		{
 			orientationAngle = 225-(angleA+angleB)/2 ;	
 		}
+		
 		return orientationAngle;
 	}
 }

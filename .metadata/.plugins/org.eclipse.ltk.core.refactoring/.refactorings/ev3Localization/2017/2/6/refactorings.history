@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename local variable &apos;intensity&apos; in &apos;ev3Localization.LightLocalizer.doLocalization()&apos; to &apos;colorDataTemp&apos;&#x0A;- Original project: &apos;ev3Localization&apos;&#x0A;- Original element: &apos;ev3Localization.LightLocalizer.doLocalization().intensity&apos;&#x0A;- Renamed element: &apos;intensity&apos;&#x0A;- Update references to refactored element" description="Rename local variable &apos;intensity&apos;" id="org.eclipse.jdt.ui.rename.local.variable" input="/src&lt;ev3Localization{LightLocalizer.java[LightLocalizer~doLocalization@intensity!721!736!727!735!F!0!false" name="colorDataTemp" references="true" stamp="1486387739436" version="1.0"/>
+</session>
