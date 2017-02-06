@@ -8,64 +8,95 @@ public class USLocalizer {
 	public enum LocalizationType { FALLING_EDGE, RISING_EDGE };
 	public static float ROTATION_SPEED = 120;
 	
-	private static final int LEEWAY	= 33; // leeway in the reading of the US 
-
 	private Odometer odo;
 	private SampleProvider usSensor;
 	private float[] usData;
 	private LocalizationType locType;
-	public Navigation nav; // Initialize navigation object
+	public Navigation navigation; 
+	
+	private static final int BANDWIDTH	= 33;
 	
 	public USLocalizer(Odometer odo,  SampleProvider usSensor, float[] usData, LocalizationType locType) {
 		this.odo = odo;
 		this.usSensor = usSensor;
 		this.usData = usData;
 		this.locType = locType;
-		nav = new Navigation(this.odo);
+		this.navigation = new Navigation(this.odo);
 	}
 	
 	public void doLocalization() {
-		double angleA, angleB; // variable for agnle b
-		double actualAng = 0; // the actual angle of the robot used at the end to position robot 
+		
+		// Angle variables
+		double angleA, angleB;
+		
+		// Angle used to for ending orientation
+		double orientationAngle = 0;
 		
 		if (locType == LocalizationType.FALLING_EDGE) {
 			
-			// rotate the robot until it sees no wall
-			while(getFilteredData() < LEEWAY){
-				rightTurn();
+			// Rotate the robot clockwise until there is no wall
+			// This is done in the case that the robot begins looking
+			// at a wall. We want the robot to begin its readings while
+			// it's not facing a wall.
+			while(getFilteredData() < BANDWIDTH)
+			{
+				rotateCW();
 			}
-			Delay.msDelay(1000);// Delay to avoid getting bad readings from the sensor
 			
-			//Rotate robot untill a wall is seen
-			while (getFilteredData() >= LEEWAY){	
-				rightTurn();
-			}
-			angleA = odo.getAng(); // latch the angle
-			nav.setSpeeds(0, 0);//stop the robto
-			Delay.msDelay(1000);// avoid getting bad readings from the sensor
-			
-			// switch direction and wait until it sees no wall
-			while(getFilteredData() < LEEWAY){
-				leftTurn();
-			}
-			Delay.msDelay(1000); // delay to avoid getting bad readings
-			
-			// keep rotating until the robot sees a wall, then latch the angle
-			while (getFilteredData() >= LEEWAY){
-				leftTurn();
-			}
-			nav.setSpeeds(0, 0); // stop the robot
-			angleB = odo.getAng(); // latch the angle
+			// Delay the process in order to avoid bad readings
 			Delay.msDelay(1000);
 			
-			// angleA is clockwise from angleB, so assume the average of the
-			// angles to the right of angleB is 45 degrees past 'north'
+			// Rotate the robot clockwise until a wall is detected
+			while (getFilteredData() >= BANDWIDTH)
+			{	
+				rotateCW();
+			}
 			
+			// Stop the robot's motion
+			navigation.setSpeeds(0, 0);
 			
-			actualAng = calcHeading(angleA,angleB) + odo.getAng(); // get the actual angle of the robot
-			// update the odometer position
-			odo.setPosition(new double [] {0.0, 0.0, actualAng}, new boolean [] {true, true, true});
-			nav.turnTo(0, true); // turn to 0
+			// Hold this last angle which will be used to calculate the final
+			// orientation angle
+			angleA = odo.getAng();
+			
+			// Delay the process in order to avoid bad readings
+			Delay.msDelay(1000);
+			
+			// Rotate counter clockwise until no wall is seen (for the same reason
+			// as mentioned above)
+			
+			while(getFilteredData() < BANDWIDTH)
+			{
+				rotateCCW();
+			}
+			
+			// Delay the process in order to avoid bad readings
+			Delay.msDelay(1000);
+			
+			// Rotate counter clockwise until a wall is seen
+			while (getFilteredData() >= BANDWIDTH)
+			{
+				rotateCCW();
+			}
+			
+			// Stop the robot's motion
+			navigation.setSpeeds(0, 0);
+			
+			// Hold this last angle which will be used to calculate the final
+			// orientation angle
+			angleB = odo.getAng();
+			
+			// Delay the process in order to avoid bad readings
+			Delay.msDelay(1000);
+			
+			// Calculate the orientation angle for final positioning
+			orientationAngle = calculateFinalOrientationAngle(angleA,angleB)+odo.getAng(); // get the actual angle of the robot
+			
+			// Update the odometer position
+			odo.setPosition(new double [] {0.0, 0.0, orientationAngle}, new boolean [] {true, true, true});
+			
+			// Rotate to angle 0
+			navigation.turnTo(0, true);
 			
 		} else {
 			/*
@@ -75,75 +106,105 @@ public class USLocalizer {
 			 * will face toward the wall for most of it.
 			 */
 			
-			// rotate the robot until it sees  wall
-			
-			while(getFilteredData() > LEEWAY){
-				rightTurn();
+			// Rotate the robot clockwise until it sees a wall
+			while(getFilteredData() > BANDWIDTH)
+			{
+				rotateCW();
 			}
+			
+			// Delay the process in order to avoid bad readings
 			Delay.msDelay(1000);
 						
-			// keep rotating until the robot sees a no wall, then latch the angle
-			while (getFilteredData() <= LEEWAY){
-				rightTurn();
+			// Rotate the robot clockwise until a wall is no longer seen
+			while (getFilteredData() <= BANDWIDTH)
+			{
+				rotateCW();
 			}
-						
+			
+			// Stop the robot's motion
+			navigation.setSpeeds(0, 0);
+			
+			// Hold this last angle which will be used to calculate the final
+			// orientation angle
 			angleA = odo.getAng();
-			nav.setSpeeds(0, 0);
-			Delay.msDelay(1000);
-			// switch direction and wait until it sees wall
-						
-			while(getFilteredData() > LEEWAY){
-				leftTurn();
-			}
+			
+			// Delay the process in order to avoid bad readings
 			Delay.msDelay(1000);
 			
-			// keep rotating until the robot sees no wall, then latch the angle
-			while (getFilteredData() <= LEEWAY){
-				leftTurn();
+			// Rotate counterclockwise until a wall is detected			
+			while(getFilteredData() > BANDWIDTH)
+			{
+				rotateCCW();
 			}
-			nav.setSpeeds(0, 0);
-			angleB = odo.getAng();
+			
+			// Delay the process in order to avoid bad readings
 			Delay.msDelay(1000);
-						
-			// angleA is clockwise from angleB, so assume the average of the
-			// angles to the right of angleB is 45 degrees past 'north'
-						
-						
-			actualAng = calcHeading(angleB,angleA) + odo.getAng();
-			// update the odometer position (example to follow:)
-			odo.setPosition(new double [] {0.0, 0.0, actualAng}, new boolean [] {true, true, true});
-			//nav.setSpeeds(ROTATION_SPEED, ROTATION_SPEED);
-			nav.turnTo(0, true);
+			
+			// Rotate counterclockwise until no wall is seen 
+			while (getFilteredData() <= BANDWIDTH)
+			{
+				rotateCCW();
+			}
+			
+			// Stop the robot's motion
+			navigation.setSpeeds(0, 0);
+			
+			// Hold this last angle which will be used to calculate the final
+			// orientation angle
+			angleB = odo.getAng();
+			
+			// Delay the process in order to avoid bad readings
+			Delay.msDelay(1000);
+			
+			// Calculate the orientation angle for final positioning
+			orientationAngle = calculateFinalOrientationAngle(angleB,angleA)+odo.getAng();
+			
+			// Update the odometer position (example to follow:)
+			odo.setPosition(new double [] {0.0, 0.0, orientationAngle}, new boolean [] {true, true, true});
+			
+			// Rotate to angle 0
+			navigation.turnTo(0, true);
 		}
 	}
 	
-	private float getFilteredData() { // filter the data 
-		usSensor.fetchSample(usData, 0);
-		float distance = usData[0] * 100;
+	private float getFilteredData() 
+	{
 		
-		if (distance >= 50){
-			distance = 50;
+		usSensor.fetchSample(usData, 0);
+		float distance = usData[0]*100;
+		
+		int filterValue = 50;
+		
+		// If the usSensor reads anything greater then filterValue, set the distance
+		// to the filterValue
+		if (distance >= filterValue)
+		{
+			distance = filterValue;
 		}
 		return distance;
 	}
 	
-	private  void leftTurn(){ // rotate left
-		nav.setSpeeds(-ROTATION_SPEED, ROTATION_SPEED);
+	// Counter clockwise rotation
+	private  void rotateCCW()
+	{
+		navigation.setSpeeds(-ROTATION_SPEED, ROTATION_SPEED);
 	}
 
-	private  void rightTurn(){ // rotate right
-		nav.setSpeeds(ROTATION_SPEED, -ROTATION_SPEED);
+	// Clockwise rotation
+	private  void rotateCW()
+	{
+		navigation.setSpeeds(ROTATION_SPEED, -ROTATION_SPEED);
 	}
 	
-	private static double calcHeading(double angleA, double angleB){ // calculation of heading as shown in the tutorial
+	private static double calculateFinalOrientationAngle(double angleA, double angleB){ // calculation of heading as shown in the tutorial
 		
-		double heading;
+		double orientationAngle = 0;
 		
 		if (angleA < angleB){
-			heading = 45 - (angleA + angleB) /2 ;
+			orientationAngle = 45-(angleA+angleB)/2 ;
 		}else {
-			heading = 225 - (angleA + angleB) /2 ;	
+			orientationAngle = 225-(angleA+angleB)/2 ;	
 		}
-		return heading;
+		return orientationAngle;
 	}
 }

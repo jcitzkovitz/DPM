@@ -7,15 +7,15 @@ public class LightLocalizer {
 	private Odometer odo;
 	private SampleProvider colorSensor;
 	private float[] colorData;	
-	public Navigation nav;// initialize navigation object
+	public Navigation navigation;// initialize navigation object
 	private float Rot_Speed = 60; // Rotation speed of the robot
-	private double distSensor = 15.5;//Distance from the center of rotation to the sensor
+	private double sensorDistFromCenterOfRobot = 13.5;//Distance from the center of rotation to the sensor
 	
 	public LightLocalizer(Odometer odo, SampleProvider colorSensor, float[] colorData) {
 		this.odo = odo;
 		this.colorSensor = colorSensor;
 		this.colorData = colorData;
-		nav = new Navigation(this.odo);
+		navigation = new Navigation(this.odo);
 	}
 	
 	public void doLocalization() {
@@ -24,18 +24,58 @@ public class LightLocalizer {
 		// do trig to compute (0,0) and 0 degrees
 		// when done travel to (0,0) and turn to 0 degrees
 		
+
 		double angle [] = new double [4]; // array to hold the angles when a gridline is past
 		double x,y;
 		float intensity; // light intensity variable
 		colorSensor.fetchSample(colorData, 0);
 
 		while(Button.waitForAnyPress() != Button.ID_ESCAPE){} // robot waits for user to press button to begin routine
-		boolean cont = false;
-		nav.turnTo(45,true); // turn 45 degrees
-		while(true){ // continue loop untill a black line is found and that will break the loop
+		
+		// Hold current X and Y odometer positions
+		double xi = this.odo.getX();
+		double yi = this.odo.getY();
+		
+		// Continue loop until a black line is found and that will break the loop
+		navigation.setSpeeds(100,100); // go forward at speed 100
+
+		while(true)
+		{
+			this.colorSensor.fetchSample(colorData, 0); 
+			intensity = colorData[0]; // fetch color data
 			
-			nav.setSpeeds(100,100); // go forward at speed 100
-			
+			if (intensity  < 0.60){ // if a black line is detected break the while loop
+				break;		
+			}
+		}
+
+		// Get current X and Y odometer positions
+		double xf = this.odo.getX();
+		
+		// Calculate difference between xf and xf in order to obtain the x distance
+		// to x=0
+		double xDist = xf-xi;
+		
+		// Stop the robot's motion
+		navigation.setSpeeds(0,0);
+
+		// Travel back to the robot's original position
+		navigation.setSpeeds(-100,-100);
+		while(xf-this.odo.getX() < xDist){}
+	
+		navigation.setSpeeds(0,0);
+
+		// Rotate 90 degrees counterclockwise in order to be parallel to the y-axis
+		navigation.turnTo(90, false);
+
+		// Get current X and Y position
+		xi = this.odo.getX();
+		yi = this.odo.getY();
+		
+		// Continue loop until a black line is found and that will break the loop
+		navigation.setSpeeds(100,100); // go forward at speed 100
+		while(true)
+		{
 			colorSensor.fetchSample(colorData, 0); 
 			intensity = colorData[0]; // fetch color data
 			
@@ -44,40 +84,29 @@ public class LightLocalizer {
 			}
 		}
 		
-		nav.setSpeeds(0,0); // stop the robot 
-		// putting motors to 0 then to -100 makes the transition between speeds smoother
-		nav.setSpeeds(-100,-100); // move backwards 
-		Delay.msDelay(4000); // let the robot travel backwards for a specified amount of time found experimentally 
+		// Get current Y position
+		double yf = this.odo.getY();
 		
-		int gridLines = 0; // will be incremented every time the robot detects a black line
-		while (gridLines < 4 ){ // same thing done earlier to detect a black line
-			colorSensor.fetchSample(colorData, 0);
-			nav.setSpeeds(Rot_Speed, -Rot_Speed);
-			intensity = colorData[0];
+		// Calculate the distance the robot has traveled in the y direction
+		double yDist = yf-yi;
+		
+		// Stop the robot's motion
+		navigation.setSpeeds(0, 0);
+		
+		// Travel back to the initial X and Y positions
+		navigation.setSpeeds(-100,-100);
+		while(yf-this.odo.getY() < yDist){}
 			
-			if (intensity > 0.60){
-				cont = true;
-			}
-			
-			if (intensity  < 0.60 && cont){
-				angle [gridLines] = odo.getAng(); // once a black line is detected save the angle to the angle array
-				gridLines++;
-				if (gridLines < 4){
-					Delay.msDelay(750);
-				}
-				cont = false;
-			}
-		}
-		nav.setSpeeds(0, 0); // stop the robot
-		//The rest is calculations as shown in the lecture slides
-		x = Math.abs(angle[2] - angle[0]);
-	    y = Math.abs(angle[3] - angle[1]);
-		double xpos = -distSensor * Math.cos(Math.toRadians(y) / 2);
-		double ypos = -distSensor * Math.cos(Math.toRadians(x) / 2);
-		double dtheta = -(angle[3]-180)-((y)/2);
-		odo.setPosition(new double [] {xpos, ypos, odo.getAng() + dtheta}, new boolean [] {true, true, true}); // update odometer
-		nav.travelTo(0, 0); // travel to (0,0)
-		nav.turnTo(0, true); // turn to 0.
+		// Stop the robot's motion
+		navigation.setSpeeds(0, 0);
+		
+		// Calculate the coordinates of the distance the robot needs to travel to
+		// based on xDist and yDist, while taking into consideration the position
+		// of the light sensor on the robot
+		
+		navigation.travelTo(xDist-sensorDistFromCenterOfRobot, yDist-sensorDistFromCenterOfRobot);
+		navigation.turnTo(0, true);
 	}
+	
 
 }
